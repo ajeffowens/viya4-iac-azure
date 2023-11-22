@@ -156,3 +156,12 @@ output "cluster_api_mode" {
 output "aks_network_plugin" {
   value = var.aks_network_plugin
 }
+
+## Application Gateway
+output "app_gateway_enabled" {
+  value = var.create_app_gateway ? var.create_app_gateway : null
+}
+
+output "app_gateway_frontend_ip" {
+  value = var.create_app_gateway ? module.app_gateway[0].gateway_frontend_ip : null
+}
