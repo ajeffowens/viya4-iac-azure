@@ -958,7 +958,7 @@ variable "app_gateway_defaults" {
     waf_policy                       = null
     probe = [{
       name = "default-probe"
-      path = "/SASLogon/apiMeta"
+      path = "/SASLogon/login"
     }]
   }
 }
