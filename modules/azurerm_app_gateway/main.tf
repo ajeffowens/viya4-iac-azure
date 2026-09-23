@@ -4,6 +4,10 @@
 ## https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/application_gateway
 ## https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/web_application_firewall_policy
 
+data "azurerm_location" "current" {
+  location = var.location
+}
+
 locals {
   backend_address_pool_name      = "${var.prefix}-backend-pool"
   frontend_port_name             = "${var.prefix}-frontend-port"
@@ -11,6 +15,11 @@ locals {
   http_setting_name              = "${var.prefix}-backend-setting"
   listener_name                  = "${var.prefix}-listener"
   request_routing_rule_name      = "${var.prefix}-routing-rule"
+
+  # Logical availability zones supported in the target region. Regions without
+  # zone support return an empty list, in which case resources deploy non-zonally.
+  availability_zones = sort([for zm in data.azurerm_location.current.zone_mappings : zm.logical_zone])
+  gateway_zones      = length(local.availability_zones) > 0 ? local.availability_zones : null
 }
 
 resource "azurerm_public_ip" "gateway_ip" {
@@ -20,6 +29,7 @@ resource "azurerm_public_ip" "gateway_ip" {
   allocation_method   = "Static"
   sku                 = "Standard"
   domain_name_label   = var.backend_host_name == null ? "${var.prefix}-appgateway" : null
+  zones               = local.gateway_zones
   tags                = var.tags
 }
 
@@ -61,7 +71,9 @@ resource "azurerm_web_application_firewall_policy" "waf_policy" {
       enabled                     = policy_settings.value.enabled
       mode                        = policy_settings.value.mode
       request_body_check          = policy_settings.value.request_body_check
+      request_body_enforcement    = policy_settings.value.request_body_enforcement
       file_upload_limit_in_mb     = policy_settings.value.file_upload_limit_in_mb
+      file_upload_enforcement     = policy_settings.value.file_upload_enforcement
       max_request_body_size_in_kb = policy_settings.value.max_request_body_size_in_kb
     }
   }
@@ -119,6 +131,7 @@ resource "azurerm_application_gateway" "appgateway" {
   name                              = "${var.prefix}-appgateway"
   resource_group_name               = var.resource_group_name
   location                          = var.location
+  zones                             = local.gateway_zones
   firewall_policy_id                = var.waf_policy_enabled ? azurerm_web_application_firewall_policy.waf_policy[0].id : null
   force_firewall_policy_association = var.waf_policy_enabled ? true : false
 
@@ -126,6 +139,11 @@ resource "azurerm_application_gateway" "appgateway" {
     name     = var.waf_policy_enabled ? "WAF_v2" : var.sku
     tier     = var.waf_policy_enabled ? "WAF_v2" : "Standard_v2"
     capacity = 2
+  }
+
+  ssl_policy {
+    policy_type = "Predefined"
+    policy_name = "AppGwSslPolicy20220101S"
   }
 
   gateway_ip_configuration {
